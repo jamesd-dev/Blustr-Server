@@ -27,7 +27,7 @@ const userSchema = new Schema(
     }, 
     alteredStories: {
       type: [{
-        story: {type: mongoose.Schema.Types.ObjectId, ref: 'Story'},
+        story: {type: mongoose.Schema.Types.ObjectId, ref: 'Story', unique: true},
         liked : {type: Boolean},
         disliked : {type: Boolean}
       }]
