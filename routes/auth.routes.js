@@ -56,7 +56,8 @@ router.post('/signup', (req, res) => {
                 if (err.code === 11000) {
                   res.status(500)
                   .json({
-                    errorMessage: 'username or email entered already exists!'
+                    errorMessage: 'username or email entered already exists!',
+                    message: err
                   });
                   return;  
                 } 

@@ -25,13 +25,11 @@ const userSchema = new Schema(
       type: [mongoose.Schema.Types.ObjectId],
       ref: 'Story'
     }, 
-    alteredStories: {
-      type: [{
-        story: {type: mongoose.Schema.Types.ObjectId, ref: 'Story', unique: true},
+    alteredStories: [{
+        storyId : {type: String},
         liked : {type: Boolean},
         disliked : {type: Boolean}
       }]
-    }
   }
 );
 userSchema.index({ 'email': 1}, {unique: true});

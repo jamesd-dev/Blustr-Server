@@ -30,7 +30,17 @@ router.post("/story/create", isLoggedIn, (req, res) => {
     views: 0,
   })
     .then((response) => {
-      res.status(200).json(response);
+         UserModel.findByIdAndUpdate(req.session.loggedInUser._id, {$push: {stories: response._id}})
+         .then(() => {
+               res.status(200).json(response);
+         })
+         .catch((err) => {
+          res.status(500).json({
+            error: "Failed to add story to user/author",
+            message: err,
+          });
+        });
+      
     })
     .catch((err) => {
       res.status(500).json({
@@ -113,14 +123,14 @@ router.patch("/story/:id/like", isLoggedIn, (req, res) => {
 
           console.log('found user: ', user.username);
            // check if alt story exists
-           let altStory = user.alteredStories.find((e) => {return e.story == storyId;});
+           let altStory = user.alteredStories.find((e) => {return e.storyId == storyId;});
            console.log(altStory);
 
            if(!altStory) { // if none, push new alt story to user
 
                console.log('found user\'s alteredStories contains: ', altStory);
 
-                altStory = {story: storyId, liked: true, disliked: false}
+                altStory = {storyId: storyId, liked: true, disliked: false}
 
                 console.log('user\'s proposed alteredStories contains: ', altStory);
                 
@@ -171,17 +181,12 @@ router.patch("/story/:id/like", isLoggedIn, (req, res) => {
                     console.log('pushing changes... ', changes)
 
                     // push changes to story
-                    StoryModel.findByIdAndUpdate({$set: changes})
+                    StoryModel.findByIdAndUpdate(storyId, {$set: changes})
                     .then((updatedStory) => {
                          console.log('Updated story to: ', updatedStory);
                      })
                      .catch((err) => {
                          console.log('failed to update story');
-                         // return failure
-                         res.status(500).json({
-                              error: "Failed to update story",
-                              message: err,
-                         });
                      })
 
                     // push changes to user alt stories copy
@@ -197,7 +202,7 @@ router.patch("/story/:id/like", isLoggedIn, (req, res) => {
                     .then((updatedAltStory) => {
                          console.log('Updated user\'s alt story to: ', updatedAltStory);
                          // return success 
-                         res.status(200).json({updatedStory});
+                         res.status(200).json({updatedAltStory});
                      })
                      .catch((err) => {
                          console.log('failed to update user\'s alt story');
@@ -231,5 +236,134 @@ router.patch("/story/:id/like", isLoggedIn, (req, res) => {
       });
     });
 });
+
+router.patch("/story/:id/dislike", isLoggedIn, (req, res) => {
+     const storyId = req.params.id;
+     const userId = req.session.loggedInUser._id;
+   
+     // must check if story exists first, for security
+     StoryModel.findById(storyId)
+       .then((story) => {
+         //  find the current user
+         UserModel.findById(userId)
+         .then((user) => {
+   
+             console.log('found user: ', user.username);
+              // check if alt story exists
+              let altStory = user.alteredStories.find((e) => {return e.storyId == storyId;});
+              console.log(altStory);
+   
+              if(!altStory) { // if none, push new alt story to user
+   
+                  console.log('found user\'s alteredStories contains: ', altStory);
+   
+                   altStory = {storyId: storyId, liked: false, disliked: true}
+   
+                   console.log('user\'s proposed alteredStories contains: ', altStory);
+                   
+                   // push new story to user
+                   UserModel.findByIdAndUpdate(userId, {$push: {alteredStories: altStory}})
+                   .then((updatedAltStory) => {
+   
+                       console.log('created new altered story for user: ', updatedAltStory);
+   
+                        // update story with new like
+                        StoryModel.findByIdAndUpdate(storyId, {$set: {dislikes: story.dislikes + 1}})
+                        .then((updatedStory) => {
+                            console.log('Updated story to: ', updatedStory);
+                            // return success 
+                            res.status(200).json({updatedStory});
+                        })
+                        .catch((err) => {
+                            console.log('failed to update story');
+                            // return failure
+                            res.status(500).json({
+                                 error: "Failed to update story",
+                                 message: err,
+                            });
+                        })
+   
+                   })
+                   .catch((err) => {
+                       console.log('Failed to push alt story to user');
+                        res.status(500).json({
+                             error: "Failed to push alt story to user",
+                             message: err,
+                        });
+                   })
+              } else {
+   
+                  console.log('found user\'s alteredStories contains: ', altStory);
+                   // check if user already disliked the story. Can only dislike once.
+                   if(!altStory.disliked) {
+                       
+                       let changes = {dislikes: story.dislikes + 1};
+                       altStory.disliked = true;
+   
+                       if(altStory.liked) { // if liked, likes must be reduced by one and the boolean toggled
+                            changes.likes = story.likes - 1;
+                            altStory.liked = false;
+                       }
+
+                       console.log('proposed alt stories: ', altStory);
+   
+                       console.log('pushing changes... ', changes)
+   
+                       // push changes to story
+                       StoryModel.findByIdAndUpdate({$set: changes})
+                       .then((updatedStory) => {
+                            console.log('Updated story to: ', updatedStory);
+                        })
+                        .catch((err) => {
+                            console.log('failed to update story');
+                        })
+   
+                       // push changes to user alt stories copy
+                       let userAltStoriesCopy = user.alteredStories.map((elem) => {
+                            if(elem.story == storyId) {
+                                 return Object.assign(elem, altStory);
+                            }
+                            return elem;
+                       });
+   
+                       // push changes to user
+                       UserModel.findByIdAndUpdate(userId, {$set: {alteredStories: userAltStoriesCopy}})
+                       .then((updatedAltStory) => {
+                            console.log('Updated user\'s alt story to: ', updatedAltStory);
+                            // return success 
+                            res.status(200).json({updatedAltStory});
+                        })
+                        .catch((err) => {
+                            console.log('failed to update user\'s alt story');
+                            // return failure
+                            res.status(500).json({
+                                 error: 'failed to update user\'s alt story',
+                                 message: err,
+                            });
+                        })
+   
+   
+                   } else { // otherwise mustn't alter the story
+                   console.log('Story already disliked.');
+                       res.status(500).json({
+                            error: "Story already disliked"
+                       });
+                   }
+              }
+         })
+         .catch((err) => {
+              res.status(500).json({
+                   error: "Failed to find user",
+                   message: err,
+              });
+         })
+       })
+       .catch((err) => {
+         res.status(500).json({
+           error: "Failed to find story from id",
+           message: err,
+         });
+       });
+   });
 
 module.exports = router;
