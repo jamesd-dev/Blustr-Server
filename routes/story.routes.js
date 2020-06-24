@@ -18,6 +18,23 @@ router.get("/story", (req, res) => {
     });
 });
 
+// breaks data into pages, or blocks of data for infinite scrolling
+// pages start at 0
+router.get("/story/page/:page", (req, res) => {
+  const storiesPerPage = 10;
+  let skip = req.params.page * storiesPerPage;
+  StoryModel.find({}, {}, {skip: skip, limit: storiesPerPage})
+    .then((stories) => {
+      res.status(200).json(stories);
+    })
+    .catch((err) => {
+      res.status(500).json({
+        error: "Failed to get page",
+        message: err,
+      });
+    });
+});
+
 router.post("/story/create", isLoggedIn, (req, res) => {
   const { content } = req.body;
   console.log(req.body);
