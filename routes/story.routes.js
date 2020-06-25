@@ -21,7 +21,7 @@ router.get("/story", (req, res) => {
 // breaks data into pages, or blocks of data for infinite scrolling
 // pages start at 0
 router.get("/story/page/:page", (req, res) => {
-  const storiesPerPage = 10;
+  const storiesPerPage = 20;
   let skip = req.params.page * storiesPerPage;
   StoryModel.find({}, {}, {skip: skip, limit: storiesPerPage})
     .then((stories) => {
@@ -36,11 +36,13 @@ router.get("/story/page/:page", (req, res) => {
 });
 
 router.post("/story/create", isLoggedIn, (req, res) => {
-  const { content } = req.body;
+  const { content, coverImg, title } = req.body;
   console.log(req.body);
   StoryModel.create({
     author: req.session.loggedInUser._id,
     content,
+    coverImg,
+    title,
     dateCreated: new Date(),
     likes: 0,
     dislikes: 0,
