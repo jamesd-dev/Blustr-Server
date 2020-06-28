@@ -23,7 +23,7 @@ router.get("/story", (req, res) => {
 router.get("/story/page/:page", (req, res) => {
   const storiesPerPage = 20;
   let skip = req.params.page * storiesPerPage;
-  StoryModel.find({}, {}, {skip: skip, limit: storiesPerPage})
+  StoryModel.find({}).sort({dateCreated: -1}).skip(skip).limit(storiesPerPage)
     .then((stories) => {
       res.status(200).json(stories);
     })
@@ -36,13 +36,11 @@ router.get("/story/page/:page", (req, res) => {
 });
 
 router.post("/story/create", isLoggedIn, (req, res) => {
-  const { content, coverImg, title } = req.body;
+  const { content} = req.body;
   console.log(req.body);
   StoryModel.create({
     author: req.session.loggedInUser._id,
-    content,
-    coverImg,
-    title,
+    content: content,
     dateCreated: new Date(),
     likes: 0,
     dislikes: 0,

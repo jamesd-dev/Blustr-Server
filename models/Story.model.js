@@ -10,12 +10,6 @@ let StorySchema = new mongoose.Schema({
         type: [String],
         required: true
     },
-    coverImg : {
-        type: String
-    },
-    title: {
-        type: String
-    },
     dateCreated: {
         type: Date,
         required: true
