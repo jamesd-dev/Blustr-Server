@@ -68,7 +68,7 @@ router.post("/story/create", isLoggedIn, (req, res) => {
     });
 });
 
-router.get("/story/:id", isLoggedIn, (req, res) => {
+router.get("/story/:id", (req, res) => {
   StoryModel.findById(req.params.id)
     .then((story) => {
       StoryModel.findByIdAndUpdate(req.params.id, {
@@ -125,300 +125,140 @@ router.patch("/story/:id/like", isLoggedIn, (req, res) => {
   const storyId = req.params.id;
   const userId = req.session.loggedInUser._id;
 
-  // must check if story exists first, for security
-  StoryModel.findById(storyId)
-    .then((story) => {
-      if (story) {
-        console.log("found story: ", story);
-        //  find the current user
-        UserModel.findById(userId)
-          .then((user) => {
-            console.log("found user: ", user.username);
-            // check if alt story exists
-            let altStory = user.alteredStories.find((e) => {
-              return e.storyId == storyId;
-            });
-            console.log(altStory);
+  getStoryAndUser(storyId, userId)
+  .then((storyAndUser) => {
 
-            if (!altStory) {
-              // if none, push new alt story to user
+    const story = storyAndUser[0];
+    const user = storyAndUser[1];
+    let altStory = getAlt(user, story);
 
-              console.log("found user's alteredStories contains: ", altStory);
+    const {liked, disliked} = altStory;
+    
+    let setAlt;
 
-              altStory = { storyId: storyId, liked: true, disliked: false };
+    if (!liked && !disliked) {
+      // unaltered
+      setAlt = setAlts(true, false, 1, 0, user, story);
+    } else if (liked) {
+      // already liked
+      setAlt = setAlts(false, false, -1, 0, user, story);
+    } else if (disliked && !liked) {
+      // already disliked
+      setAlt = setAlts(true, false, 1, -1, user, story);
+    }
 
-              console.log(
-                "user's proposed alteredStories contains: ",
-                altStory
-              );
-
-              // push new story to user
-              UserModel.findByIdAndUpdate(userId, {
-                $push: { alteredStories: altStory },
-              })
-                .then((updatedAltStory) => {
-                  console.log(
-                    "created new altered story for user: ",
-                    updatedAltStory
-                  );
-
-                  // update story with new like
-                  StoryModel.findByIdAndUpdate(storyId, {
-                    $set: { likes: story.likes + 1 },
-                  })
-                    .then((updatedStory) => {
-                      console.log("Updated story to: ", updatedStory);
-                      // return success
-                      res.status(200).json({ updatedStory });
-                    })
-                    .catch((err) => {
-                      console.log("failed to update story");
-                      // return failure
-                      res.status(500).json({
-                        error: "Failed to update story",
-                        message: err,
-                      });
-                    });
-                })
-                .catch((err) => {
-                  console.log("Failed to push alt story to user");
-                  res.status(500).json({
-                    error: "Failed to push alt story to user",
-                    message: err,
-                  });
-                });
-            } else {
-              console.log("found user's alteredStories contains: ", altStory);
-              // check if user already liked the story. Can only like once.
-              console.log("mark");
-              if (!altStory.liked) {
-                console.log(story.likes);
-                let changes = { likes: story.likes + 1 };
-                altStory.liked = true;
-                if (altStory.disliked) {
-                  // if disliked, dislikes must be reduced by one and the boolean toggled
-                  changes.dislikes = story.dislikes - 1;
-                  altStory.disliked = false;
-                }
-                console.log("pushing changes... ", changes);
-
-                // push changes to story
-                StoryModel.findByIdAndUpdate(storyId, { $set: changes })
-                  .then((updatedStory) => {
-                    console.log("Updated story to: ", updatedStory);
-                  })
-                  .catch((err) => {
-                    console.log("failed to update story");
-                  });
-
-                // push changes to user alt stories copy
-                let userAltStoriesCopy = user.alteredStories.map((elem) => {
-                  if (elem.storyId == storyId) {
-                    return Object.assign(elem, altStory);
-                  }
-                  return elem;
-                });
-
-                // push changes to user
-                UserModel.findByIdAndUpdate(userId, {
-                  $set: { alteredStories: userAltStoriesCopy },
-                })
-                  .then((updatedAltStory) => {
-                    console.log(
-                      "Updated user's alt story to: ",
-                      updatedAltStory
-                    );
-                    // return success
-                    res.status(200).json({ updatedAltStory });
-                  })
-                  .catch((err) => {
-                    console.log("failed to update user's alt story");
-                    // return failure
-                    res.status(500).json({
-                      error: "failed to update user's alt story",
-                      message: err,
-                    });
-                  });
-              } else {
-                // otherwise mustn't alter the story
-                console.log("Story already liked.");
-                res.status(500).json({
-                  error: "Story already liked",
-                });
-              }
-            }
-          })
-          .catch((err) => {
-            res.status(500).json({
-              error: "Failed to find user",
-              message: err,
-            });
-          });
-      } else {
-        console.log("Story does not exist");
-        res.status(500).json({
-          error: "Story does not exist",
-          message: err,
-        });
-      }
+    setAlt
+    .then((response) => {
+      console.log('set story and user alt');
+      console.log(`likes: ${response[1].likes} dislikes: ${response[1].dislikes}`)
+      res.status(200).json(response);
     })
-    .catch((err) => {
-      res.status(500).json({
-        error: "Failed to find story from id",
-        message: err,
-      });
+
+  })
+  .catch((err) => {
+    console.log('failed to get user and story');
+    console.log('err: ', err);
+    res.status(500).json({
+      error: "failed to get user and story",
+      message: err,
     });
+  })
 });
 
 router.patch("/story/:id/dislike", isLoggedIn, (req, res) => {
   const storyId = req.params.id;
   const userId = req.session.loggedInUser._id;
 
-  // must check if story exists first, for security
-  StoryModel.findById(storyId)
-    .then((story) => {
-      if (story) {
-        console.log("found story: ", story);
-        //  find the current user
-        UserModel.findById(userId)
-          .then((user) => {
-            console.log("found user: ", user.username);
-            // check if alt story exists
-            let altStory = user.alteredStories.find((e) => {
-              return e.storyId == storyId;
-            });
-            console.log(altStory);
+  getStoryAndUser(storyId, userId)
+  .then((storyAndUser) => {
 
-            if (!altStory) {
-              // if none, push new alt story to user
+    const story = storyAndUser[0];
+    const user = storyAndUser[1];
+    let altStory = getAlt(user, story);
 
-              console.log("found user's alteredStories contains: ", altStory);
+    const {liked, disliked} = altStory;
+    
+    let setAlt;
 
-              altStory = { storyId: storyId, liked: false, disliked: true };
+    if (!liked && !disliked) {
+      // unaltered
+      setAlt = setAlts(false, true, 0, 1, user, story);
+    } else if (disliked) {
+      // already disliked
+      setAlt = setAlts(false, false, 0, -1, user, story);
+    } else if (!disliked && liked) {
+      // already liked
+      setAlt = setAlts(false, true, -1, 1, user, story);
+    }
 
-              console.log(
-                "user's proposed alteredStories contains: ",
-                altStory
-              );
-
-              // push new story to user
-              UserModel.findByIdAndUpdate(userId, {
-                $push: { alteredStories: altStory },
-              })
-                .then((updatedAltStory) => {
-                  console.log(
-                    "created new altered story for user: ",
-                    updatedAltStory
-                  );
-
-                  // update story with new like
-                  StoryModel.findByIdAndUpdate(storyId, {
-                    $set: { dislikes: story.dislikes + 1 },
-                  })
-                    .then((updatedStory) => {
-                      console.log("Updated story to: ", updatedStory);
-                      // return success
-                      res.status(200).json({ updatedStory });
-                    })
-                    .catch((err) => {
-                      console.log("failed to update story");
-                      // return failure
-                      res.status(500).json({
-                        error: "Failed to update story",
-                        message: err,
-                      });
-                    });
-                })
-                .catch((err) => {
-                  console.log("Failed to push alt story to user");
-                  res.status(500).json({
-                    error: "Failed to push alt story to user",
-                    message: err,
-                  });
-                });
-            } else {
-              console.log("found user's alteredStories contains: ", altStory);
-              // check if user already disliked the story. Can only dislike once.
-              if (!altStory.disliked) {
-                let changes = { dislikes: story.dislikes + 1 };
-                altStory.disliked = true;
-
-                if (altStory.liked) {
-                  // if liked, likes must be reduced by one and the boolean toggled
-                  changes.likes = story.likes - 1;
-                  altStory.liked = false;
-                }
-
-                console.log("proposed alt stories: ", altStory);
-
-                console.log("pushing changes... ", changes);
-
-                // push changes to story
-                StoryModel.findByIdAndUpdate(storyId, { $set: changes })
-                  .then((updatedStory) => {
-                    console.log("Updated story to: ", updatedStory);
-                  })
-                  .catch((err) => {
-                    console.log("failed to update story");
-                  });
-
-                // push changes to user alt stories copy
-                let userAltStoriesCopy = user.alteredStories.map((elem) => {
-                  if (elem.storyId == storyId) {
-                    return Object.assign(elem, altStory);
-                  }
-                  return elem;
-                });
-
-                // push changes to user
-                UserModel.findByIdAndUpdate(userId, {
-                  $set: { alteredStories: userAltStoriesCopy },
-                })
-                  .then((updatedAltStory) => {
-                    console.log(
-                      "Updated user's alt story to: ",
-                      updatedAltStory
-                    );
-                    // return success
-                    res.status(200).json({ updatedAltStory });
-                  })
-                  .catch((err) => {
-                    console.log("failed to update user's alt story");
-                    // return failure
-                    res.status(500).json({
-                      error: "failed to update user's alt story",
-                      message: err,
-                    });
-                  });
-              } else {
-                // otherwise mustn't alter the story
-                console.log("Story already disliked.");
-                res.status(500).json({
-                  error: "Story already disliked",
-                });
-              }
-            }
-          })
-          .catch((err) => {
-            res.status(500).json({
-              error: "Failed to find user",
-              message: err,
-            });
-          });
-      } else {
-        console.log("Story does not exist");
-        res.status(500).json({
-          error: "Story does not exist",
-          message: err,
-        });
-      }
+    setAlt
+    .then((response) => {
+      console.log('set story and user alt');
+      console.log(`likes: ${response[1].likes} dislikes: ${response[1].dislikes}`)
+      res.status(200).json(response);
     })
-    .catch((err) => {
-      res.status(500).json({
-        error: "Failed to find story from id",
-        message: err,
-      });
+
+  })
+  .catch((err) => {
+    console.log('failed to get user and story');
+    console.log('err: ', err);
+    res.status(500).json({
+      error: "failed to get user and story",
+      message: err,
     });
+  })
+
 });
+
+// easier to bundle all the essential promises here, instead of wrapping the whole function in them
+function getStoryAndUser(storyId, userId) {
+  let getStory = StoryModel.findById(storyId);  
+  let getUser = UserModel.findById(userId);
+  return Promise.all([getStory, getUser]);
+}
+
+function getAlt(user, story) {
+    let altStory = user.alteredStories.find((e) => {
+    return e.storyId == story._id;
+    });
+    // only need to know the true false pattern. if there is no alt story they're essentially both false
+    return (altStory) ? altStory : {storyId: story._id, liked: false, disliked: false};
+}
+
+function setUserAlt(liked, disliked, user, story) {
+  return new Promise((resolve, reject) => {
+    UserModel.findByIdAndUpdate(user._id, {
+      $set: { alteredStories: {storyId: story._id, liked: liked, disliked: disliked} }
+    })
+    .then((res) => {
+      resolve(res);
+    })
+    .catch(() => {
+      UserModel.findByIdAndUpdate(user._id, {
+        $push: { alteredStories: {storyId: story._id, liked: liked, disliked: disliked} }
+      })
+      .then((res) => {
+        resolve(res);
+      })
+      .catch((err) => {
+        reject(err);
+      })
+    })
+  });
+}
+
+function setStoryAlt(dLikes, dDislikes, story) {
+  return StoryModel.findByIdAndUpdate(story._id, {
+    $set: { likes: story.likes + dLikes, dislikes: story.dislikes + dDislikes},
+  });
+}
+
+function setAlts(liked, disliked, dLikes, dDislikes, user, story) {
+  let setUserAltPromise = setUserAlt(liked, disliked, user, story);
+  let setStoryAltPromise = setStoryAlt(dLikes, dDislikes, story);
+  return Promise.all([setUserAltPromise, setStoryAltPromise]);
+}
+
+
 
 module.exports = router;
