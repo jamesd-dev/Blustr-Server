@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require('mongoose');
 
 let StoryModel = require("../models/Story.model");
 const { isLoggedIn, doesOwn } = require("../helpers/auth-helper"); // to check if user is loggedIn
@@ -90,12 +91,9 @@ router.get("/story/:id", (req, res) => {
     });
 });
 
-router.delete("/story/:id", isLoggedIn, (req, res) => {
+router.delete("/story/:id", (req, res) => {
   StoryModel.findById(req.params.id)
     .then((story) => {
-      const userId = req.session.loggedInUser._id;
-      // checks if the user is allowed to delete story
-      if (doesOwn(userId, story)) {
         StoryModel.findByIdAndDelete(req.params.id)
           .then((response) => {
             res.status(200).json(response);
@@ -106,12 +104,6 @@ router.delete("/story/:id", isLoggedIn, (req, res) => {
               message: err,
             });
           });
-      } else {
-        res.status(401).json({
-          error: "Non owner tried to delete story",
-          message: err,
-        });
-      }
     })
     .catch((err) => {
       res.status(500).json({
@@ -219,37 +211,45 @@ function getStoryAndUser(storyId, userId) {
 
 function getAlt(user, story) {
     let altStory = user.alteredStories.find((e) => {
-    return e.storyId == story._id;
+    return e.storyId.toString() === story._id.toString();
     });
     // only need to know the true false pattern. if there is no alt story they're essentially both false
+    console.log(altStory);
     return (altStory) ? altStory : {storyId: story._id, liked: false, disliked: false};
 }
 
 function setUserAlt(liked, disliked, user, story) {
   return new Promise((resolve, reject) => {
+    if(user.alteredStories.find((e) => {
+      return e.storyId.toString() === story._id.toString();
+      })) {
+    UserModel.findByIdAndUpdate(user._id, 
+      {$set: {"alteredStories.$[element].liked": liked, "alteredStories.$[element].disliked": disliked}},
+       {arrayFilters: [{"element.storyId": story._id}], multi: true})
+    .then((res) => {
+      resolve(res);
+    })
+    .catch((err) => {
+      console.log(err);
+      reject(err);
+    })
+  } else {
     UserModel.findByIdAndUpdate(user._id, {
-      $set: { alteredStories: {storyId: story._id, liked: liked, disliked: disliked} }
+      $push: { alteredStories: {storyId: story._id, liked: liked, disliked: disliked} }
     })
     .then((res) => {
       resolve(res);
     })
-    .catch(() => {
-      UserModel.findByIdAndUpdate(user._id, {
-        $push: { alteredStories: {storyId: story._id, liked: liked, disliked: disliked} }
-      })
-      .then((res) => {
-        resolve(res);
-      })
-      .catch((err) => {
-        reject(err);
-      })
+    .catch((err) => {
+      reject(err);
     })
+  }
   });
 }
 
 function setStoryAlt(dLikes, dDislikes, story) {
   return StoryModel.findByIdAndUpdate(story._id, {
-    $set: { likes: story.likes + dLikes, dislikes: story.dislikes + dDislikes},
+    $inc: {likes: dLikes, dislikes: dDislikes},
   });
 }
 
