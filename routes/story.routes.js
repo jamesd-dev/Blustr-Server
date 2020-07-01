@@ -37,15 +37,17 @@ router.get("/story/page/:page", (req, res) => {
 });
 
 router.post("/story/create", isLoggedIn, (req, res) => {
-  const { content} = req.body;
+  const { content, coverImage, wide} = req.body;
   console.log(req.body);
   StoryModel.create({
     author: req.session.loggedInUser._id,
     content: content,
+    coverImage: coverImage,
     dateCreated: new Date(),
     likes: 0,
     dislikes: 0,
     views: 0,
+    wide: wide
   })
     .then((response) => {
       UserModel.findByIdAndUpdate(req.session.loggedInUser._id, {
